@@ -6,6 +6,7 @@
  *   - getResult              Fetch one DiagnosticReport or Observation by ID
  *   - getTrend               Time-series for a LOINC code with trend analysis
  *   - searchLiterature       PubMed + ClinicalTrials.gov
+ *   - getOpenFdaAdverseEvents FDA top adverse events for a drug
  *   - checkDrugInteractions  RxNorm interaction API (no auth required)
  */
 
@@ -17,7 +18,13 @@ const TIMEOUT_MS = 20_000;
 
 // ── Internal helpers ───────────────────────────────────────────────────────────
 
+const requestCache = new Map<string, any>();
+
 async function httpGet(url: string): Promise<Record<string, unknown>> {
+  if (requestCache.has(url)) {
+    console.info(`[cache hit] ${url}`);
+    return requestCache.get(url);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -26,19 +33,27 @@ async function httpGet(url: string): Promise<Record<string, unknown>> {
       headers: { Accept: 'application/fhir+json' },
     });
     if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
-    return r.json() as Promise<Record<string, unknown>>;
+    const data = await r.json();
+    requestCache.set(url, data);
+    return data as Promise<Record<string, unknown>>;
   } finally {
     clearTimeout(timer);
   }
 }
 
 async function jsonGet(url: string, headers: Record<string, string> = {}): Promise<Record<string, unknown>> {
+  if (requestCache.has(url)) {
+    console.info(`[cache hit] ${url}`);
+    return requestCache.get(url);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const r = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json', ...headers } });
     if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
-    return r.json() as Promise<Record<string, unknown>>;
+    const data = await r.json();
+    requestCache.set(url, data);
+    return data as Promise<Record<string, unknown>>;
   } finally {
     clearTimeout(timer);
   }
@@ -502,4 +517,44 @@ export const checkDrugInteractions = new FunctionTool({
       return { status: 'error', error_message: String(err) };
     }
   },
+});
+
+// ── Tool: getOpenFdaAdverseEvents ─────────────────────────────────────────────
+
+export const getOpenFdaAdverseEvents = new FunctionTool({
+  name: 'getOpenFdaAdverseEvents',
+  description: 'Gets the top reported adverse events for a drug from the FDA OpenFDA API.',
+  parameters: z.object({
+    drugName: z.string().describe('Name of the drug (e.g., palbociclib, letrozole)'),
+  }),
+  execute: async (args: { drugName: string }) => {
+    try {
+      const drug = args.drugName.toLowerCase().replace(/[^a-z0-9]/g, '+');
+      const url = `https://api.fda.gov/drug/event.json?search=patient.drug.medicinalproduct:${drug}&count=patient.reaction.reactionmeddrapt.exact`;
+      
+      const res = await fetch(url);
+      if (!res.ok) {
+        if (res.status === 404) return { error: `No adverse event data found for drug: ${args.drugName}` };
+        throw new Error(`FDA API Error ${res.status}`);
+      }
+      
+      const data = await res.json() as any;
+      if (!data.results || data.results.length === 0) {
+        return { warning: `No adverse events listed for ${args.drugName}` };
+      }
+
+      // Return top 5 adverse events
+      const topEvents = data.results.slice(0, 5).map((r: any) => ({
+        event: r.term,
+        count: r.count
+      }));
+
+      return {
+        drug: args.drugName,
+        top_adverse_events: topEvents
+      };
+    } catch (e) {
+      return { error: `FDA fetch failed: ${String(e)}` };
+    }
+  }
 });

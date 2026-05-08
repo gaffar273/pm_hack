@@ -13,7 +13,7 @@ import { LlmAgent } from '@google/adk';
 
 export const rootAgent = new LlmAgent({
   name: 'reasoning_agent',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-2.5-pro',
   description:
     'Senior consulting physician — interprets a new test result in the context of ' +
     'the patient\'s full medical history. Produces differential diagnosis, risk assessment, ' +

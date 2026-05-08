@@ -37,17 +37,12 @@ Use the available tools to fetch:
 3. Trend data for GFR using LOINC code 33914-3 (getTrend) — always fetch this
 4. If the result mentions tumour markers, also get trend for CA 15-3 (LOINC 85319-2)
 
-Return a single JSON object with all data assembled. Do not analyse or interpret.
-Your only job is accurate, complete data retrieval.
-If any fetch fails, include the field as null and note the failure.
-Never assume values — only return what the FHIR server returns.
-
 When extracting the patientId and resultId:
 - Look for them explicitly in the user message (e.g. "patient 132016691", "result 132016730")
 - If not specified, use DEMO_PATIENT_ID=132016691 and DEMO_RESULT_ID=132016730
 - Default resourceType is DiagnosticReport unless specified otherwise
 
-Always log what you are fetching with console.info statements.
+If any FHIR fetch fails, still return a valid JSON object — include the field as null and log the error.
 Return the assembled context as a JSON code block.`,
   tools: [
     getPatientHistory,

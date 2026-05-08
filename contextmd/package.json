@@ -5,7 +5,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -c \"cyan,green,yellow,magenta,blue,red\" -n \"assembler,reasoning,contra,literature,briefing,orchestrator\" \"npx tsx context_assembler_agent/server.ts\" \"npx tsx reasoning_agent/server.ts\" \"npx tsx contraindication_agent/server.ts\" \"npx tsx literature_agent/server.ts\" \"npx tsx briefing_agent/server.ts\" \"npx tsx orchestrator/server.ts\"",
+    "dev": "docker start hapi-fhir && concurrently -c \"cyan,green,yellow,magenta,blue,red\" -n \"assembler,reasoning,contra,literature,briefing,orchestrator\" \"npx tsx context_assembler_agent/server.ts\" \"npx tsx reasoning_agent/server.ts\" \"npx tsx contraindication_agent/server.ts\" \"npx tsx literature_agent/server.ts\" \"npx tsx briefing_agent/server.ts\" \"npx tsx orchestrator/server.ts\"",
+    "kill": "taskkill /F /IM node.exe /T 2>nul || echo All clear",
+    "restart": "npm run kill && npm run dev",
+    "export": "npx tsx scripts/format_briefing.ts",
     "dev:assembler": "npx tsx context_assembler_agent/server.ts",
     "dev:reasoning": "npx tsx reasoning_agent/server.ts",
     "dev:contra": "npx tsx contraindication_agent/server.ts",

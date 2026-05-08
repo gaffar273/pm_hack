@@ -12,10 +12,26 @@
  */
 
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 if (!process.env['GOOGLE_GENAI_API_KEY'] && !process.env['GEMINI_API_KEY']) {
     const fallback = process.env['GOOGLE_API_KEY'];
     if (fallback) {
         process.env['GOOGLE_GENAI_API_KEY'] = fallback;
+    }
+}
+
+// Decode base64 service account if present
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+    try {
+        const decoded = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf8');
+        const tmpPath = path.join(os.tmpdir(), 'contextmd_service_account.json');
+        fs.writeFileSync(tmpPath, decoded, 'utf8');
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = tmpPath;
+        console.info(`[env] Decoded base64 service account to ${tmpPath}`);
+    } catch (e) {
+        console.error('[env] Failed to decode GOOGLE_APPLICATION_CREDENTIALS_BASE64', e);
     }
 }

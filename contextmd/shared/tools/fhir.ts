@@ -44,33 +44,64 @@ function getFhirCredentials(ToolContext: ToolContext): FhirCredentials | null {
     return { fhirUrl: fhirUrl.replace(/\/$/, ''), fhirToken, patientId };
 }
 
+const fhirCache = new Map<string, any>();
+
 async function fhirGet(
     creds: FhirCredentials,
     path: string,
     params?: Record<string, string>,
+    retries = 3,
 ): Promise<Record<string, unknown>> {
     const url = new URL(`${creds.fhirUrl}/${path}`);
     if (params) {
         for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FHIR_TIMEOUT_MS);
-    try {
-        const response = await fetch(url.toString(), {
-            signal: controller.signal,
-            headers: {
-                Authorization: `Bearer ${creds.fhirToken}`,
-                Accept: 'application/fhir+json',
-            },
-        });
-        if (!response.ok) {
-            const body = await response.text().catch(() => '');
-            throw new Error(`FHIR HTTP ${response.status}: ${body.slice(0, 200)}`);
-        }
-        return response.json() as Promise<Record<string, unknown>>;
-    } finally {
-        clearTimeout(timer);
+    
+    const urlStr = url.toString();
+    if (fhirCache.has(urlStr)) {
+        console.info(`[cache hit] ${urlStr}`);
+        return fhirCache.get(urlStr);
     }
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FHIR_TIMEOUT_MS);
+        try {
+            const response = await fetch(url.toString(), {
+                signal: controller.signal,
+                headers: {
+                    Authorization: `Bearer ${creds.fhirToken}`,
+                    Accept: 'application/fhir+json',
+                },
+            });
+            clearTimeout(timer);
+
+            if (response.status === 429) {
+                const retryAfterHeader = response.headers.get('retry-after');
+                const waitMs = retryAfterHeader ? parseInt(retryAfterHeader) * 1000 : attempt * 3000;
+                console.warn(`FHIR 429 rate limit on attempt ${attempt}/${retries} — waiting ${waitMs}ms before retry...`);
+                if (attempt < retries) {
+                    await new Promise(r => setTimeout(r, waitMs));
+                    continue;
+                }
+                throw new Error(`HTTP 429 - Rate limit exceeded on ${url.toString()}`);
+            }
+
+            if (!response.ok) {
+                const body = await response.text().catch(() => '');
+                throw new Error(`HTTP ${response.status} from ${url.toString()}: ${body.slice(0, 200)}`);
+            }
+            const data = await response.json() as Record<string, unknown>;
+            fhirCache.set(urlStr, data);
+            return data;
+        } catch (err) {
+            clearTimeout(timer);
+            if (attempt === retries) throw err;
+            // Network error — brief backoff before retry
+            await new Promise(r => setTimeout(r, attempt * 1000));
+        }
+    }
+    throw new Error(`fhirGet failed after ${retries} attempts`);
 }
 
 function codingDisplay(codings: unknown[]): string {

@@ -131,6 +131,29 @@ app.post('/', async (req, res) => {
   console.info(`[orchestrator] Input: ${userText.slice(0, 200)}`);
 
   try {
+    const isFollowUp = userText.toLowerCase().includes('what if') || userText.toLowerCase().includes('follow up') || userText.toLowerCase().includes('how about');
+
+    if (isFollowUp) {
+      console.info(`\n[orchestrator] ── 'What-If' Mode ── Bypassing full assembly`);
+      const safetyData = await callAgent(
+        CONTRA_URL,
+        `The user is asking a follow-up 'What If' question: "${userText}"\n\nRe-evaluate drug interactions and safety based on this new proposed drug. \n\nMEDICATIONS: Letrozole 2.5mg, Fluconazole 200mg, Metformin 1000mg, Lisinopril 10mg, Atorvastatin 40mg, Dexamethasone 4mg, Ondansetron 8mg, Omeprazole 20mg, Aspirin 81mg, Lorazepam 0.5mg\n\nGFR: 31 mL/min/1.73m2 (declining)\nALLERGIES: Penicillin (anaphylaxis)\n\nReturn JSON with safety_review and do_not_do arrays.`,
+        API_KEY,
+      );
+      
+      return res.json({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          kind: 'message',
+          messageId: uuidv4(),
+          role: 'agent',
+          contextId,
+          parts: [{ kind: 'text', text: safetyData }],
+        },
+      });
+    }
+
     // ── Step 1: Context Assembler ──────────────────────────────────────────────
     console.info(`\n[orchestrator] ── Step 1: Context Assembler ──`);
     let contextData = '';
@@ -145,47 +168,36 @@ app.post('/', async (req, res) => {
       console.error(`[orchestrator] Step 1 error: ${String(e)}`);
     }
 
-    // ── Step 2: Reasoning Agent ────────────────────────────────────────────────
-    console.info(`\n[orchestrator] ── Step 2: Reasoning Agent ──`);
-    let reasoningData = '';
-    try {
-      reasoningData = await callAgent(
+    // ── Steps 2, 3, 4: Run in PARALLEL ────────────────────────────────────────
+    console.info(`\n[orchestrator] ── Steps 2+3+4: Reasoning / Contraindication / Literature (parallel) ──`);
+    const [reasoningResult, safetyResult, literatureResult] = await Promise.allSettled([
+      // Step 2: Reasoning
+      callAgent(
         REASONING_URL,
         `Perform full clinical reasoning for this patient context:\n\n${contextData}\n\nReturn structured JSON with differential, risk assessment, and next steps.`,
         API_KEY,
-      );
-    } catch (e) {
-      reasoningData = `Reasoning failed: ${String(e)}`;
-      console.error(`[orchestrator] Step 2 error: ${String(e)}`);
-    }
-
-    // ── Step 3: Contraindication Agent ────────────────────────────────────────
-    console.info(`\n[orchestrator] ── Step 3: Contraindication Agent ──`);
-    let safetyData = '';
-    try {
-      safetyData = await callAgent(
+      ),
+      // Step 3: Contraindication — runs same time as reasoning with known patient meds
+      callAgent(
         CONTRA_URL,
-        `Check drug interactions and safety for this patient:\n\nMEDICATIONS: Letrozole 2.5mg, Fluconazole 200mg, Metformin 1000mg, Lisinopril 10mg, Atorvastatin 40mg, Dexamethasone 4mg, Ondansetron 8mg, Omeprazole 20mg, Aspirin 81mg, Lorazepam 0.5mg\n\nGFR: 31 mL/min/1.73m2 (declining)\nALLERGIES: Penicillin (anaphylaxis)\n\nPROPOSED NEXT STEPS FROM REASONING AGENT:\n${reasoningData}\n\nCheck Palbociclib specifically against Fluconazole. Return JSON with safety_review and do_not_do arrays.`,
+        `Check drug interactions and safety for this patient:\n\nMEDICATIONS: Letrozole 2.5mg, Fluconazole 200mg, Metformin 1000mg, Lisinopril 10mg, Atorvastatin 40mg, Dexamethasone 4mg, Ondansetron 8mg, Omeprazole 20mg, Aspirin 81mg, Lorazepam 0.5mg\n\nGFR: 31 mL/min/1.73m2 (declining)\nALLERGIES: Penicillin (anaphylaxis)\n\nKEY CHECK: Palbociclib (CDK4/6 inhibitor — likely to be proposed) vs Fluconazole (strong CYP3A4 inhibitor). Return JSON with safety_review and do_not_do arrays.`,
         API_KEY,
-      );
-    } catch (e) {
-      safetyData = `Safety check failed: ${String(e)}`;
-      console.error(`[orchestrator] Step 3 error: ${String(e)}`);
-    }
-
-    // ── Step 4: Literature Agent ───────────────────────────────────────────────
-    console.info(`\n[orchestrator] ── Step 4: Literature Agent ──`);
-    let literatureData = '';
-    try {
-      literatureData = await callAgent(
+      ),
+      // Step 4: Literature — runs same time, topic is known from context
+      callAgent(
         LITERATURE_URL,
         `Search for literature and clinical trials for: HR+ HER2- breast cancer Stage III treatment CDK4/6 inhibitors palbociclib aromatase inhibitor resistance. trialCondition: Breast Cancer. Patient: female ~58yo, CKD Stage 3. Return JSON with literature and clinical_trials arrays.`,
         API_KEY,
-      );
-    } catch (e) {
-      literatureData = `Literature search failed: ${String(e)}`;
-      console.error(`[orchestrator] Step 4 error: ${String(e)}`);
-    }
+      ),
+    ]);
+
+    const reasoningData = reasoningResult.status === 'fulfilled' ? reasoningResult.value : `Reasoning failed: ${String((reasoningResult as PromiseRejectedResult).reason)}`;
+    const safetyData   = safetyResult.status === 'fulfilled'    ? safetyResult.value    : `Safety check failed: ${String((safetyResult as PromiseRejectedResult).reason)}`;
+    const literatureData = literatureResult.status === 'fulfilled' ? literatureResult.value : `Literature search failed: ${String((literatureResult as PromiseRejectedResult).reason)}`;
+
+    if (reasoningResult.status === 'rejected')   console.error(`[orchestrator] Step 2 error: ${String((reasoningResult as PromiseRejectedResult).reason)}`);
+    if (safetyResult.status === 'rejected')      console.error(`[orchestrator] Step 3 error: ${String((safetyResult as PromiseRejectedResult).reason)}`);
+    if (literatureResult.status === 'rejected')  console.error(`[orchestrator] Step 4 error: ${String((literatureResult as PromiseRejectedResult).reason)}`);
 
     // ── Step 5: Briefing Agent ─────────────────────────────────────────────────
     console.info(`\n[orchestrator] ── Step 5: Briefing Agent ──`);
@@ -215,7 +227,8 @@ Return the complete ClinicalBriefing JSON object and nothing else.`,
       console.error(`[orchestrator] Step 5 error: ${String(e)}`);
     }
 
-    console.info(`\n[orchestrator] ✅ Pipeline complete — returning briefing (${briefingData.length} chars)`);
+    console.info(`\n[orchestrator] Pipeline complete — returning briefing (${briefingData.length} chars)`);
+
 
     return res.json({
       jsonrpc: '2.0',

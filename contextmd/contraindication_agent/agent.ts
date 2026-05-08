@@ -9,7 +9,7 @@
 import '../shared/env.js';
 
 import { LlmAgent } from '@google/adk';
-import { checkDrugInteractions } from '../shared/tools/index.js';
+import { checkDrugInteractions, getOpenFdaAdverseEvents } from '../shared/tools/index.js';
 
 export const rootAgent = new LlmAgent({
   name: 'contraindication_agent',
@@ -27,9 +27,10 @@ You will receive:
 
 Your job: For every proposed next step involving a medication or treatment:
 1. Call checkDrugInteractions with the proposed drug PLUS all current patient medications
-2. Check renal safety — is this drug safe at this patient's GFR? (GFR <30 = high risk, 30-60 = caution)
-3. Check hepatic safety — is this drug safe given liver function?
-4. Check for allergy conflicts with the patient's documented allergies
+2. Call getOpenFdaAdverseEvents for the proposed drug to identify major adverse events
+3. Check renal safety — is this drug safe at this patient's GFR? (GFR <30 = high risk, 30-60 = caution)
+4. Check hepatic safety — is this drug safe given liver function?
+5. Check for allergy conflicts with the patient's documented allergies
 5. Check for CYP enzyme interactions — especially CYP3A4 (Fluconazole is a STRONG CYP3A4 inhibitor)
    - CYP3A4 inhibitors raise plasma levels of CYP3A4 substrates dramatically
    - Palbociclib is a CYP3A4 substrate — Fluconazole raises its AUC by up to 87% (severe toxicity risk)
@@ -47,6 +48,7 @@ Return ONLY structured JSON:
       "status": "Safe|Dose Modified|Contraindicated",
       "concerns": ["..."],
       "mechanism": "Exact mechanism of any interaction",
+      "fda_adverse_events": ["..."],
       "recommendation": "...",
       "alternative": "Required if Contraindicated"
     }
@@ -62,6 +64,6 @@ Return ONLY structured JSON:
 }
 
 Be precise about the mechanism of every interaction you flag.
-Always call checkDrugInteractions for proposed drugs — do not guess.`,
-  tools: [checkDrugInteractions],
+Always call checkDrugInteractions and getOpenFdaAdverseEvents for proposed drugs — do not guess.`,
+  tools: [checkDrugInteractions, getOpenFdaAdverseEvents],
 });

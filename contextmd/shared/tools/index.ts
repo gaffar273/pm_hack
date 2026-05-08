@@ -24,4 +24,5 @@ export {
     getTrend,
     searchLiterature,
     checkDrugInteractions,
+    getOpenFdaAdverseEvents,
 } from './contextmd_tools.js';
