@@ -1,0 +1,36 @@
+{
+  "name": "contextmd",
+  "version": "1.0.0",
+  "description": "ContextMD — AI-powered clinical briefing system. Instant MDT for any patient result.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -c \"cyan,green,yellow,magenta,blue,red\" -n \"assembler,reasoning,contra,literature,briefing,orchestrator\" \"npx tsx context_assembler_agent/server.ts\" \"npx tsx reasoning_agent/server.ts\" \"npx tsx contraindication_agent/server.ts\" \"npx tsx literature_agent/server.ts\" \"npx tsx briefing_agent/server.ts\" \"npx tsx orchestrator/server.ts\"",
+    "dev:assembler": "npx tsx context_assembler_agent/server.ts",
+    "dev:reasoning": "npx tsx reasoning_agent/server.ts",
+    "dev:contra": "npx tsx contraindication_agent/server.ts",
+    "dev:literature": "npx tsx literature_agent/server.ts",
+    "dev:briefing": "npx tsx briefing_agent/server.ts",
+    "dev:orchestrator": "npx tsx orchestrator/server.ts",
+    "build": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.10",
+    "@google/adk": "^0.3.0",
+    "@google/genai": "^2.0.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.21.0",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "concurrently": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

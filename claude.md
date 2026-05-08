@@ -1,6 +1,9 @@
 # ContextMD — Claude Code Project Context
 ## review rule 
-claude code and codex will review your opuput once you are done .
+claude code and codex will review your opuput once you are done . 
+
+## important rule 
+use of imoji and purple color items is banned.
 ## What We Are Building
 
 **ContextMD** is an AI-powered clinical briefing system that runs an instant Multidisciplinary Team (MDT) meeting for any patient when a new test result arrives.
@@ -218,61 +221,61 @@ Build in this order. Do not skip ahead.
 
 ```
 Phase 1 — Foundation
-  [ ] Find demo patient on HAPI FHIR, lock DEMO_PATIENT_ID in .env
-  [ ] Clone starter repo, npm install, verify all three example agents start
-  [ ] Test starter curl commands from README — confirm agents respond
+  [x] Find demo patient on HAPI FHIR, lock DEMO_PATIENT_ID in .env
+  [x] Clone starter repo, npm install, verify all three example agents start
+  [x] Test starter curl commands from README — confirm agents respond
 
 Phase 2 — FHIR Tools
-  [ ] Add getPatientHistory() to shared/tools/fhir.ts
-  [ ] Add getResult() to shared/tools/fhir.ts
-  [ ] Add getTrend() to shared/tools/fhir.ts
-  [ ] Add searchLiterature() to shared/tools/fhir.ts (PubMed + ClinicalTrials)
-  [ ] Add checkDrugInteractions() to shared/tools/fhir.ts (RxNorm API)
-  [ ] Unit test each tool independently with demo patient ID
+  [x] Add getPatientHistory() to shared/tools/fhir.ts
+  [x] Add getResult() to shared/tools/fhir.ts
+  [x] Add getTrend() to shared/tools/fhir.ts
+  [x] Add searchLiterature() to shared/tools/fhir.ts (PubMed + ClinicalTrials)
+  [x] Add checkDrugInteractions() to shared/tools/fhir.ts (RxNorm API)
+  [x] Unit test each tool independently with demo patient ID
 
 Phase 3 — Context Assembler Agent (port 8004)
-  [ ] Create context_assembler_agent/ folder (copy healthcare_agent/ as template)
-  [ ] Wire getPatientHistory + getResult + getTrend tools
-  [ ] Instruction: fetch and assemble full patient context object
-  [ ] Test: returns complete context for demo patient + demo result
+  [x] Create context_assembler_agent/ folder (copy healthcare_agent/ as template)
+  [x] Wire getPatientHistory + getResult + getTrend tools
+  [x] Instruction: fetch and assemble full patient context object
+  [x] Test: returns complete context for demo patient + demo result
 
 Phase 4 — Reasoning Agent (port 8005)
-  [ ] Create reasoning_agent/ folder (copy general_agent/ as template — no FHIR hook)
-  [ ] Input: receives assembled context object as message text
-  [ ] Instruction: clinical reasoning, differential, risk level, propose next steps
-  [ ] Output: structured JSON matching reasoning section of ClinicalBriefing
-  [ ] Test: coherent clinical reasoning for demo patient scenario
+  [x] Create reasoning_agent/ folder (copy general_agent/ as template — no FHIR hook)
+  [x] Input: receives assembled context object as message text
+  [x] Instruction: clinical reasoning, differential, risk level, propose next steps
+  [x] Output: structured JSON matching reasoning section of ClinicalBriefing
+  [x] Test: coherent clinical reasoning for demo patient scenario
 
 Phase 5 — Contraindication Agent (port 8006)
-  [ ] Create contraindication_agent/ folder
-  [ ] Wire checkDrugInteractions() tool (RxNorm)
-  [ ] Input: receives patient medications + proposed next steps from reasoning agent
-  [ ] Instruction: check every proposed step — drug interactions, renal, allergy, CYP
-  [ ] Output: each step annotated as Safe / Dose Modified / Contraindicated
-  [ ] Test: catches Fluconazole + Palbociclib interaction
+  [x] Create contraindication_agent/ folder
+  [x] Wire checkDrugInteractions() tool (RxNorm)
+  [x] Input: receives patient medications + proposed next steps from reasoning agent
+  [x] Instruction: check every proposed step — drug interactions, renal, allergy, CYP
+  [x] Output: each step annotated as Safe / Dose Modified / Contraindicated
+  [x] Test: catches Fluconazole + Palbociclib interaction
 
 Phase 6 — Literature Agent (port 8007)
-  [ ] Create literature_agent/ folder
-  [ ] Wire searchLiterature() tool
-  [ ] Input: condition name, patient profile keywords
-  [ ] Instruction: find relevant guidelines and open trials, filter to patient profile
-  [ ] Output: literature + trials sections of ClinicalBriefing
-  [ ] Test: returns real PubMed papers + real ClinicalTrials.gov trials
+  [x] Create literature_agent/ folder
+  [x] Wire searchLiterature() tool
+  [x] Input: condition name, patient profile keywords
+  [x] Instruction: find relevant guidelines and open trials, filter to patient profile
+  [x] Output: literature + trials sections of ClinicalBriefing
+  [x] Test: returns real PubMed papers + real ClinicalTrials.gov trials
 
 Phase 7 — Briefing Agent (port 8008)
-  [ ] Create briefing_agent/ folder
-  [ ] No external tools needed — pure assembly
-  [ ] Input: receives outputs from all four specialist agents
-  [ ] Instruction: assemble into final ClinicalBriefing JSON structure
-  [ ] Output: complete ClinicalBriefing object
-  [ ] Test: output matches ClinicalBriefing interface exactly
+  [x] Create briefing_agent/ folder
+  [x] No external tools needed — pure assembly
+  [x] Input: receives outputs from all four specialist agents
+  [x] Instruction: assemble into final ClinicalBriefing JSON structure
+  [x] Output: complete ClinicalBriefing object
+  [x] Test: output matches ClinicalBriefing interface exactly
 
 Phase 8 — Orchestrator (port 8003)
-  [ ] Modify existing orchestrator/ to delegate to our five agents
-  [ ] Routing logic: always hits context_assembler first, then fans out
-  [ ] Collects all outputs, sends to briefing_agent last
-  [ ] Add all agent URLs to .env
-  [ ] Test: single prompt → full briefing end to end
+  [x] Modify existing orchestrator/ to delegate to our five agents
+  [x] Routing logic: always hits context_assembler first, then fans out
+  [x] Collects all outputs, sends to briefing_agent last
+  [x] Add all agent URLs to .env
+  [x] Test: single prompt → full briefing end to end
 
 Phase 9 — Prompt Opinion Integration
   [ ] Deploy all agents (Cloud Run or expose via ngrok for demo)
