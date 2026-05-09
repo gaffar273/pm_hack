@@ -1,0 +1,540 @@
+﻿AGENTS ASSEMBLE HACKATHON ù TECHNICAL PLAN
+ContextMD
+Intelligent Test Result Analysis & Clinical Briefing
+Deadline: 12 May 2026  |  Team: [YOUR TEAM NAME]
+1. The Problem
+The Scene
+A doctor opens a patient file. It contains:
+  - 200 previous lab results spanning 5 years
+  - 12 radiology reports
+  - 8 specialist letters
+  - 15 medications
+  - 7 diagnoses from 4 different doctors
+  - A new biopsy report that just came in 10 minutes ago
+The doctor has 7 minutes with this patient.
+They will read the new result. They will not read everything else.
+They will miss context. Not because they are a bad doctor.
+Because they are human, and the system gives them no choice.
+The core problem is not the doctor. It is the absence of a system that connects a new result to everything already known about the patient and tells the doctor what it means in that specific context.
+A sodium level of 128 means something completely different in:
+A healthy 25-year-old athlete
+A 70-year-old on diuretics with heart failure
+A cancer patient currently on chemotherapy
+Every test result needs to be read in the context of the whole patient. Right now, that context assembly happens inside the doctor's head, manually, under time pressure, with incomplete recall.
+2. What ContextMD Does
+Core Concept
+Any new test result arrives ù blood test, biopsy, MRI report, ECG, pathology, surgical report.
+ContextMD reads it, pulls the patient's entire FHIR history, cross-references medical literature,
+and hands the doctor one intelligent briefing ù before they even open the file.
+2.1 Input ù What Triggers the System
+Any of the following can trigger ContextMD:
+Result Type
+Examples
+FHIR Resource
+Laboratory Results
+Blood count, metabolic panel, tumour markers, hormone levels, cultures
+Observation
+Pathology / Biopsy
+Cancer staging, tissue diagnosis, cytology
+DiagnosticReport
+Radiology Reports
+MRI, CT, X-ray, ultrasound, PET scan findings
+ImagingStudy + DiagnosticReport
+Cardiac Tests
+ECG, echocardiogram, stress test, Holter monitor
+DiagnosticReport + Observation
+Surgical Reports
+Post-operative findings, intraoperative notes
+Procedure + DiagnosticReport
+Specialist Letters
+Oncology, nephrology, neurology consult letters
+DocumentReference
+2.2 Output ù What the Doctor Receives
+One structured briefing containing:
+Section
+Content
+Result Summary
+What the new result says, in plain clinical language ù no raw lab jargon
+Patient Context
+How this result fits into the patient's history ù trend over time, relevant past results, related diagnoses
+Risk Assessment
+What this result means for this specific patient given their conditions, age, medications, and history
+Differential Considerations
+What conditions this result is consistent with ù ranked by likelihood given the full patient picture
+Recommended Next Steps
+Top 3 actions ù further tests to order, specialist to refer to, treatment to consider
+What NOT To Do
+Contraindicated treatments given patient history, allergies, current medications, organ function
+Relevant Literature
+Latest clinical guidelines and trials relevant to this result and patient profile
+Clinical Trial Eligibility
+If applicable ù trials the patient may qualify for based on diagnosis and criteria
+2.3 Clinical Scenarios Covered
+Scenario
+What ContextMD Does
+Cancer diagnosis (new)
+Reads pathology report, pulls staging indicators from imaging, cross-references oncology treatment guidelines (NCCN, ESMO), flags clinical trials, checks current meds for contraindications with chemotherapy agents
+Cancer ù follow-up scan
+Compares new scan to all previous imaging, identifies progression or remission trend, updates treatment recommendation based on response data
+Pre-surgical assessment
+Reads all relevant labs and imaging, checks anaesthesia risk factors (cardiac, renal, respiratory), flags anything that makes surgery high risk, produces pre-op summary for surgeon
+Abnormal blood test
+Compares to patient's full longitudinal lab history, identifies whether this is a new development or a worsening trend, checks medications that could cause this abnormality
+Chronic disease monitoring
+Diabetes HbA1c trend, kidney function trajectory, liver enzymes over time ù connects pattern to current treatment and recommends adjustment
+Post-operative review
+Reads surgical report and post-op labs together, flags early warning signs of complications, cross-references recovery guidelines for the specific procedure
+Minor / routine result
+Short clear summary ù result is within expected range given patient profile, no action required, or simple standard next step
+3. Technical Architecture
+3.1 Component Overview
+Component
+Type
+Role
+FHIR History Fetcher
+MCP Tool 1
+Fetches complete patient history ù all past results, diagnoses, medications, procedures
+FHIR Result Ingester
+MCP Tool 2
+Reads and parses the new incoming test result from FHIR DiagnosticReport or Observation
+FHIR Trend Analyser
+MCP Tool 3
+Fetches time-series data for specific tests ù builds longitudinal trend for any lab or vital
+Literature & Guidelines Fetcher
+MCP Tool 4
+Queries PubMed, NCCN, NICE, ESMO APIs for relevant clinical guidelines and recent studies
+Context Assembler Agent
+A2A Agent
+Pulls all MCP tool outputs together into a unified patient + result context object
+Clinical Reasoning Agent
+A2A Agent
+Core AI reasoning ù interprets result in patient context, builds differential, assesses risk
+Contraindication Checker Agent
+A2A Agent
+Checks proposed next steps against patient medications, allergies, organ function, prior reactions
+Literature Synthesiser Agent
+A2A Agent
+Reads retrieved guidelines, extracts what is relevant to THIS patient's specific profile
+Briefing Generator Agent
+A2A Agent
+Assembles final structured briefing ù one document, all sections, ready for doctor review
+Orchestrator Agent
+A2A Agent
+Receives trigger, coordinates all agents in sequence, returns briefing to platform
+3.2 Full Data Flow
+New test result arrives in FHIR system
+           |
+           v
+[Orchestrator Agent]  <-- triggered via Prompt Opinion platform
+           |
+           |-- parallel calls to MCP tools:
+           |
+           |-- [MCP Tool 1: FHIR History Fetcher]
+           |       GET /DiagnosticReport?patient={id}
+           |       GET /Observation?patient={id}
+           |       GET /Condition?patient={id}
+           |       GET /MedicationRequest?patient={id}
+           |       GET /Procedure?patient={id}
+           |       GET /AllergyIntolerance?patient={id}
+           |
+           |-- [MCP Tool 2: FHIR Result Ingester]
+           |       GET /DiagnosticReport/{resultId}  (new result)
+           |       Parses: result type, values, flags, performing lab
+           |
+           |-- [MCP Tool 3: FHIR Trend Analyser]
+           |       GET /Observation?patient={id}&code={loincCode}&_sort=date
+           |       Builds time-series: all previous values of same test
+           |
+           |-- [MCP Tool 4: Literature Fetcher]
+                   PubMed API: search by condition + result type
+                   NCCN / NICE / ESMO: guideline lookup by ICD-10 code
+           |
+           v
+[Context Assembler Agent]
+    Merges all MCP outputs into unified context object:
+    { patient_profile, new_result, history, trends, guidelines }
+           |
+           v
+[Clinical Reasoning Agent]  <-- core intelligence
+    - Interprets new result in full patient context
+    - Builds differential diagnosis list ranked by probability
+    - Assesses clinical risk level: low / moderate / high / critical
+    - Proposes top 3 next steps
+    - Flags what NOT to do
+           |
+           v
+[Contraindication Checker Agent]
+    - Takes proposed next steps from Reasoning Agent
+    - Checks each against: current medications, allergies,
+      kidney function (GFR), liver function, prior adverse reactions
+    - Returns: safe / modify dose / contraindicated for each step
+           |
+           v
+[Literature Synthesiser Agent]
+    - Takes retrieved guidelines and papers
+    - Extracts only what applies to this patient's specific profile
+    - Formats as 3-5 clinical references with relevance explanation
+           |
+           v
+[Briefing Generator Agent]
+    Assembles final doctor briefing:
+    1. Result Summary
+    2. Patient Context & Trends
+    3. Risk Assessment
+    4. Differential Considerations
+    5. Recommended Next Steps (contraindication-checked)
+    6. What NOT To Do
+    7. Relevant Literature
+    8. Clinical Trial Eligibility (if applicable)
+           |
+           v
+Doctor opens patient file on Prompt Opinion platform
+Briefing is already there. Ready to review.
+3.3 SHARP Context Propagation
+Every agent call and MCP tool call in the chain carries the SHARP context header ù patient ID, FHIR base URL, and access token. This means:
+No agent re-authenticates separately
+Patient scope never drifts between agent hops
+MCP tools are generic ù they work for any patient, any hospital, any FHIR server
+// SHARP header present on every MCP tool call
+const sharp = JSON.parse(request.headers['x-sharp-context']);
+// { fhir_base_url, patient_id, access_token, encounter_id }
+const res = await fetch(`${sharp.fhir_base_url}/DiagnosticReport?patient=${sharp.patient_id}`, {
+  headers: { Authorization: `Bearer ${sharp.access_token}` }
+});
+4. MCP Tools ù Deep Dive
+These four tools form the Superpower layer. They are published to the Prompt Opinion Marketplace independently ù any other agent can call them.
+4.1 Tool: get_patient_history
+What It Fetches
+Data
+FHIR Resource
+Fields Retrieved
+All past diagnostic reports
+DiagnosticReport
+result type, status, date, conclusion, performer
+All lab observations
+Observation
+LOINC code, value, unit, reference range, flag, date
+Active & past diagnoses
+Condition
+ICD-10 code, display name, onset date, severity, status
+All medications
+MedicationRequest
+drug name, RxNorm code, dose, frequency, start date, status
+Procedures performed
+Procedure
+procedure name, date, outcome, performer
+Allergies
+AllergyIntolerance
+substance, reaction type, severity, date recorded
+Demographics
+Patient
+age, sex, weight, blood group
+Output
+{
+  "patient": { "id": "7823", "age": 58, "sex": "female", "weight_kg": 72 },
+  "conditions": [{ "icd10": "C50.9", "display": "Breast cancer", "onset": "2022-03" }],
+  "medications": [{ "name": "Tamoxifen", "dose": "20mg", "frequency": "daily" }],
+  "past_results": [{ "type": "CBC", "date": "2024-11", "summary": "WBC elevated" }],
+  "allergies": [{ "substance": "Penicillin", "reaction": "anaphylaxis" }],
+  "procedures": [{ "name": "Lumpectomy", "date": "2022-06", "outcome": "successful" }]
+}
+4.2 Tool: get_result
+What It Does
+Reads and parses one specific incoming DiagnosticReport or Observation from FHIR. Normalises the data into a clean structured object regardless of result type.
+GET /DiagnosticReport/{resultId}
+GET /Observation/{resultId}
+Normalised output:
+{
+  "result_type": "Pathology",
+  "test_name": "Core needle biopsy ù right breast",
+  "date": "2026-05-01",
+  "status": "final",
+  "findings": "Invasive ductal carcinoma, grade 2, ER+, PR+, HER2-",
+  "performing_lab": "City Hospital Pathology",
+  "raw_fhir": { ... }
+}
+4.3 Tool: get_trend
+What It Does
+Fetches all historical values of a specific test for a patient, sorted by date. Used to build trend analysis ù is this getting better or worse over time?
+// Example: trend for serum creatinine
+GET /Observation?patient={id}&code=2160-0&_sort=date&_count=50
+Output:
+{
+  "test": "Serum Creatinine",
+  "loinc": "2160-0",
+  "unit": "mg/dL",
+  "values": [
+    { "date": "2024-01", "value": 0.9, "flag": "normal" },
+    { "date": "2024-06", "value": 1.1, "flag": "normal" },
+    { "date": "2025-01", "value": 1.4, "flag": "high" },
+    { "date": "2026-04", "value": 1.8, "flag": "high" }
+  ],
+  "trend": "progressively_rising",
+  "change_over_period": "+100% over 28 months"
+}
+4.4 Tool: get_literature
+What It Does
+Queries medical knowledge sources for guidelines and research relevant to a specific condition and result type.
+Data Sources
+Source
+API
+What It Provides
+PubMed
+NCBI E-utilities API (free)
+Recent peer-reviewed studies by condition + keyword
+NCCN Guidelines
+NCCN API / web fetch
+US oncology treatment guidelines by cancer type
+NICE Guidelines
+NICE API (free, UK)
+Evidence-based clinical guidelines ù any condition
+ClinicalTrials.gov
+ClinicalTrials API v2 (free)
+Open trials patient may qualify for by condition + eligibility
+RxNorm
+NLM RxNorm API (free)
+Drug information, interactions, normalised drug names
+// PubMed search example
+GET https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi
+    ?db=pubmed&term=invasive+ductal+carcinoma+ER+positive+treatment
+    &retmax=5&sort=relevance&format=json
+// ClinicalTrials eligibility search
+GET https://clinicaltrials.gov/api/v2/studies
+    ?query.cond=breast+cancer&query.term=ER+positive
+    &filter.overallStatus=RECRUITING&pageSize=3
+5. A2A Agents ù Deep Dive
+5.1 Context Assembler Agent
+Role
+Takes the raw outputs from all four MCP tools and merges them into one unified context object that all downstream agents work from.
+What It Produces
+{
+  "patient_profile": { age, sex, weight, conditions, medications, allergies },
+  "new_result": { type, findings, date, performing_lab },
+  "relevant_history": {
+    "same_test_previous": [...],   // past results of same test type
+    "related_results": [...],      // results related to same condition
+    "relevant_procedures": [...]   // procedures relevant to this result
+  },
+  "trends": { "creatinine": {...}, "tumour_markers": {...} },
+  "guidelines": [...],
+  "clinical_trials": [...]
+}
+5.2 Clinical Reasoning Agent
+Role
+This is the core intelligence of the system. It takes the full context object and reasons about what the new result means for this specific patient.
+Reasoning Steps
+Interpret the result ù what does this finding mean clinically
+Contextualise against history ù is this new, worsening, improving, or expected
+Contextualise against conditions ù how does this interact with existing diagnoses
+Build differential ù what conditions are consistent with this result given the full picture
+Assess risk level ù low / moderate / high / critical ù with explicit reasoning
+Propose next steps ù what should happen next, ordered by priority
+Flag omissions ù what has NOT been done that guidelines say should be done
+Risk Levels
+Risk Level
+Meaning
+Example
+Critical
+Immediate action required
+Troponin spike in patient with chest pain and prior MI history ù emergency referral
+High
+Action required within 24-48 hours
+New cancer diagnosis ù urgent oncology referral needed
+Moderate
+Action required at next appointment
+Rising HbA1c trend ù medication adjustment needed
+Low
+Monitoring only
+Slightly low vitamin D ù supplement recommendation
+5.3 Contraindication Checker Agent
+Role
+Takes every proposed next step from the Reasoning Agent and checks it against the patient's full safety profile before it reaches the doctor.
+What It Checks
+Check
+Data Source
+Example Flag
+Drug-drug interactions
+RxNorm Interaction API
+Proposed anticoagulant conflicts with existing NSAID
+Allergy conflicts
+AllergyIntolerance from FHIR
+Proposed antibiotic ù patient has documented penicillin anaphylaxis
+Renal dose adjustment
+GFR from Observation FHIR
+Proposed drug contraindicated below GFR 30 ù patient GFR is 24
+Hepatic considerations
+LFTs from Observation FHIR
+Proposed drug hepatotoxic ù patient has elevated ALT
+Prior adverse reactions
+AdverseEvent from FHIR
+Patient had severe reaction to same drug class previously
+Age-specific risks
+Patient age + Beers Criteria
+Proposed sedative ù high fall risk for patient aged 74
+Output
+{
+  "next_steps_reviewed": [
+    {
+      "step": "Start carboplatin chemotherapy",
+      "status": "safe",
+      "notes": "No interactions with current medications. Renal function adequate."
+    },
+    {
+      "step": "Add ibuprofen for pain management",
+      "status": "contraindicated",
+      "reason": "Patient GFR 24 ù NSAIDs contraindicated. Suggest paracetamol instead."
+    }
+  ]
+}
+5.4 Literature Synthesiser Agent
+Role
+Takes the raw literature retrieved by the MCP tool and filters it down to what is genuinely relevant to THIS patient. Not all guidelines apply to every patient.
+Filtering Logic
+Match guideline condition to patient's active diagnoses
+Match patient age and sex to guideline eligibility criteria
+Match result type to guideline scope ù e.g. post-surgery guidelines only if procedure recorded
+Match clinical trial eligibility criteria against patient profile
+Rank by recency ù prefer guidelines updated within last 3 years
+Output
+{
+  "guidelines": [
+    {
+      "source": "NCCN Breast Cancer Guidelines v2.2025",
+      "relevance": "Patient has ER+/HER2- invasive ductal carcinoma ù matches guideline scope exactly",
+      "key_recommendation": "Adjuvant endocrine therapy recommended for 5-10 years",
+      "url": "https://nccn.org/..."
+    }
+  ],
+  "trials": [
+    {
+      "title": "monarchE ù Abemaciclib in early HR+ breast cancer",
+      "status": "Recruiting",
+      "patient_match": "ER+, node-positive ù patient meets primary criteria",
+      "nct_id": "NCT03155997"
+    }
+  ]
+}
+5.5 Briefing Generator Agent
+Role
+Assembles all outputs from all agents into one clean, structured clinical briefing. This is what the doctor reads.
+Briefing Structure
+Section
+Source Data
+Format
+Result Summary
+MCP Tool 2 output
+2-3 sentences, plain clinical language
+Patient Context
+MCP Tool 1 + Assembler Agent
+Relevant history, how this compares to previous results
+Trend Analysis
+MCP Tool 3 output
+Direction of change, time period, clinical significance
+Risk Assessment
+Reasoning Agent
+Risk level (Critical/High/Moderate/Low) with explicit reasoning
+Differential Considerations
+Reasoning Agent
+Ranked list ù most to least likely given full patient context
+Recommended Next Steps
+Reasoning + Contraindication Agents
+Top 3 actions ù each marked Safe / Modified / Contraindicated
+What NOT To Do
+Contraindication Agent
+Specific contraindications with reasons
+Relevant Literature
+Literature Synthesiser Agent
+3-5 guidelines and studies with relevance explanation
+Clinical Trial Eligibility
+Literature Synthesiser Agent
+Trials patient qualifies for ù title, status, match reason, NCT ID
+6. Data Sources & APIs
+6.1 FHIR Server
+Environment
+Server
+URL
+Development & Demo
+HAPI FHIR Public Sandbox
+https://hapi.fhir.org/baseR4
+Production (future)
+Hospital EHR via SMART on FHIR
+Swap base URL and auth ù same MCP code works
+6.2 All External APIs Used
+API
+Purpose
+Cost
+Endpoint
+HAPI FHIR
+Patient data ù all FHIR resources
+Free
+https://hapi.fhir.org/baseR4
+NCBI PubMed E-utilities
+Medical literature search
+Free
+https://eutils.ncbi.nlm.nih.gov/entrez/eutils/
+ClinicalTrials.gov API v2
+Open clinical trials search
+Free
+https://clinicaltrials.gov/api/v2/studies
+NICE Evidence API
+UK clinical guidelines
+Free
+https://api.nice.org.uk/
+RxNorm Interaction API
+Drug-drug interactions
+Free
+https://rxnav.nlm.nih.gov/REST/interaction/
+NCBI LOINC Lookup
+Lab test code normalisation
+Free
+https://lhcforms.nlm.nih.gov/api/
+OpenFDA
+Drug adverse events, labels
+Free
+https://api.fda.gov/drug/
+6.3 FHIR Resources Used
+FHIR Resource
+What We Use It For
+Patient
+Demographics ù age, sex, weight
+Condition
+All diagnoses ù ICD-10 coded, onset date, status
+Observation
+Lab results, vitals ù LOINC coded, values, trends
+DiagnosticReport
+Full test reports ù pathology, radiology, cardiology
+MedicationRequest
+All active and historical medications
+AllergyIntolerance
+Allergies and adverse reactions
+Procedure
+Past surgeries and procedures
+ImagingStudy
+Radiology study metadata
+AdverseEvent
+Prior adverse drug reactions
+DocumentReference
+Specialist letters, unstructured clinical documents
+7. Open Questions for Team
+Question
+Options
+Recommendation
+MCP server language?
+Node.js vs Python
+Node.js ù faster dev, better MCP SDK
+How to parse radiology reports?
+Trust DiagnosticReport text field vs run NLP over it
+Trust FHIR text field for demo ù NLP is V2
+LLM for reasoning agent?
+Claude API (via Anthropic) vs GPT-4o
+Claude ù we are on their platform
+Which demo patient?
+Find on HAPI FHIR sandbox
+Pick a cancer patient with 2+ years of history and multiple result types
+Literature depth?
+PubMed only vs PubMed + NCCN + NICE
+PubMed + NCCN for demo ù most impressive combo
+Trigger mechanism?
+Doctor manually pastes result ID vs auto-detect new results
+Manual paste for demo ù simpler and controllable
+Every result means something different. We know the difference.

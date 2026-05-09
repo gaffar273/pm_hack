@@ -13,14 +13,29 @@
 import { FunctionTool, ToolContext } from '@google/adk';
 import { z } from 'zod/v3';
 
-const FHIR_BASE = process.env.FHIR_BASE_URL ?? 'https://hapi.fhir.org/baseR4';
+const FHIR_BASE_FALLBACK = process.env.FHIR_BASE_URL ?? 'http://localhost:8080/fhir';
 const TIMEOUT_MS = 20_000;
 
 // ── Internal helpers ───────────────────────────────────────────────────────────
 
 const requestCache = new Map<string, any>();
 
-async function httpGet(url: string): Promise<Record<string, unknown>> {
+/** Read FHIR credentials from ADK session state (set by fhirHook). */
+function getFhirCreds(ctx?: ToolContext): { fhirBase: string; token: string | null } {
+  const fhirBase = (
+    (ctx?.state.get('fhirUrl') as string | undefined) ??
+    (ctx?.state.get('fhir_url') as string | undefined) ??
+    FHIR_BASE_FALLBACK
+  ).replace(/\/$/, '');
+  const token = (
+    (ctx?.state.get('fhirToken') as string | undefined) ??
+    (ctx?.state.get('fhir_token') as string | undefined) ??
+    null
+  );
+  return { fhirBase, token };
+}
+
+async function httpGetAuthed(url: string, token: string | null): Promise<Record<string, unknown>> {
   if (requestCache.has(url)) {
     console.info(`[cache hit] ${url}`);
     return requestCache.get(url);
@@ -28,17 +43,20 @@ async function httpGet(url: string): Promise<Record<string, unknown>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: 'application/fhir+json' },
-    });
+    const headers: Record<string, string> = { Accept: 'application/fhir+json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const r = await fetch(url, { signal: controller.signal, headers });
     if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
     const data = await r.json();
     requestCache.set(url, data);
-    return data as Promise<Record<string, unknown>>;
+    return data as Record<string, unknown>;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function httpGet(url: string): Promise<Record<string, unknown>> {
+  return httpGetAuthed(url, null);
 }
 
 async function jsonGet(url: string, headers: Record<string, string> = {}): Promise<Record<string, unknown>> {
@@ -53,14 +71,14 @@ async function jsonGet(url: string, headers: Record<string, string> = {}): Promi
     if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
     const data = await r.json();
     requestCache.set(url, data);
-    return data as Promise<Record<string, unknown>>;
+    return data as Record<string, unknown>;
   } finally {
     clearTimeout(timer);
   }
 }
 
-function fhirUrl(path: string, params: Record<string, string> = {}): string {
-  const u = new URL(`${FHIR_BASE}/${path}`);
+function fhirUrl(base: string, path: string, params: Record<string, string> = {}): string {
+  const u = new URL(`${base}/${path}`);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   return u.toString();
 }
@@ -97,7 +115,8 @@ export const getPatientHistory = new FunctionTool({
     const patId = input.patientId ?? patientIdFromContext(ToolContext);
     if (!patId) return { status: 'error', error_message: 'No patient ID available. Provide patientId or ensure session context includes patientId.' };
 
-    console.info(`tool_get_patient_history patient_id=${patId}`);
+    const { fhirBase, token } = getFhirCreds(ToolContext);
+    console.info(`tool_get_patient_history patient_id=${patId} fhir=${fhirBase}`);
     try {
       const [
         patientData,
@@ -108,13 +127,13 @@ export const getPatientHistory = new FunctionTool({
         proceduresBundle,
         carePlansBundle,
       ] = await Promise.all([
-        httpGet(fhirUrl(`Patient/${patId}`)),
-        httpGet(fhirUrl('Condition', { patient: patId, 'clinical-status': 'active', _count: '50' })),
-        httpGet(fhirUrl('MedicationRequest', { patient: patId, status: 'active', _count: '50' })),
-        httpGet(fhirUrl('AllergyIntolerance', { patient: patId, 'clinical-status': 'active', _count: '20' })),
-        httpGet(fhirUrl('Observation', { patient: patId, _sort: '-date', _count: '30', category: 'laboratory' })),
-        httpGet(fhirUrl('Procedure', { patient: patId, _sort: '-date', _count: '20' })),
-        httpGet(fhirUrl('CarePlan', { patient: patId, status: 'active', _count: '10' })),
+        httpGetAuthed(fhirUrl(fhirBase, `Patient/${patId}`), token),
+        httpGetAuthed(fhirUrl(fhirBase, 'Condition', { patient: patId, 'clinical-status': 'active', _count: '50' }), token),
+        httpGetAuthed(fhirUrl(fhirBase, 'MedicationRequest', { patient: patId, status: 'active', _count: '50' }), token),
+        httpGetAuthed(fhirUrl(fhirBase, 'AllergyIntolerance', { patient: patId, 'clinical-status': 'active', _count: '20' }), token),
+        httpGetAuthed(fhirUrl(fhirBase, 'Observation', { patient: patId, _sort: '-date', _count: '30', category: 'laboratory' }), token),
+        httpGetAuthed(fhirUrl(fhirBase, 'Procedure', { patient: patId, _sort: '-date', _count: '20' }), token),
+        httpGetAuthed(fhirUrl(fhirBase, 'CarePlan', { patient: patId, status: 'active', _count: '10' }), token),
       ]);
 
       const names = (patientData['name'] as unknown[] | undefined) ?? [];
@@ -193,10 +212,11 @@ export const getResult = new FunctionTool({
       .default('DiagnosticReport')
       .describe("Resource type to fetch — 'DiagnosticReport' (biopsy, imaging) or 'Observation' (lab value)."),
   }),
-  execute: async (input: { resultId: string; resourceType: 'DiagnosticReport' | 'Observation' }) => {
-    console.info(`tool_get_result resourceType=${input.resourceType} id=${input.resultId}`);
+  execute: async (input: { resultId: string; resourceType: 'DiagnosticReport' | 'Observation' }, ToolContext?: ToolContext) => {
+    const { fhirBase, token } = getFhirCreds(ToolContext);
+    console.info(`tool_get_result resourceType=${input.resourceType} id=${input.resultId} fhir=${fhirBase}`);
     try {
-      const data = await httpGet(fhirUrl(`${input.resourceType}/${input.resultId}`));
+      const data = await httpGetAuthed(fhirUrl(fhirBase, `${input.resourceType}/${input.resultId}`), token);
 
       if (input.resourceType === 'DiagnosticReport') {
         const code = (data['code'] as Record<string, unknown> | undefined) ?? {};
@@ -254,16 +274,18 @@ export const getTrend = new FunctionTool({
     const patId = input.patientId ?? patientIdFromContext(ToolContext);
     if (!patId) return { status: 'error', error_message: 'No patient ID available.' };
 
+    const { fhirBase, token } = getFhirCreds(ToolContext);
     const count = Math.min(input.count ?? 20, 50);
-    console.info(`tool_get_trend patient_id=${patId} loinc=${input.loincCode} count=${count}`);
+    console.info(`tool_get_trend patient_id=${patId} loinc=${input.loincCode} count=${count} fhir=${fhirBase}`);
     try {
-      const bundle = await httpGet(
-        fhirUrl('Observation', {
+      const bundle = await httpGetAuthed(
+        fhirUrl(fhirBase, 'Observation', {
           patient: patId,
           code: input.loincCode,
           _sort: 'date',
           _count: String(count),
         }),
+        token,
       );
 
       const entries = extractEntries(bundle);
