@@ -12,10 +12,10 @@ const app = createA2aApp({
   agent: rootAgent,
   name: 'reasoning_agent',
   description:
-    'ContextMD — Senior consulting physician. Interprets a new test result in full patient context. ' +
+    'ContextMD - Senior consulting physician. Interprets a new test result in full patient context. ' +
     'Returns differential diagnosis, risk assessment, and proposed next steps as JSON.',
   url: process.env.REASONING_AGENT_URL ?? `http://localhost:${PORT}`,
-  requireApiKey: true,
+  requireApiKey: false,
 });
 
 app.listen(PORT, () => {

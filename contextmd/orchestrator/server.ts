@@ -162,17 +162,10 @@ app.get('/.well-known/agent-card.json', (_req, res) => {
   // FHIR extension URI — matches Prompt Opinion's local API schema.
   // PO uses this to inject patient FHIR credentials into the message metadata.
   const FHIR_EXTENSION_URI = process.env.FHIR_EXTENSION_URI ?? 'http://localhost:5139/schemas/a2a/v1/fhir-context';
-  const apiKeyScheme = {
-    apiKey: {
-      type: 'apiKey',
-      name: 'X-API-Key',
-      in: 'header',
-      description: 'API key required to access this agent.',
-    },
-  };
+
   res.json({
     name: 'contextmd_orchestrator',
-    description: 'ContextMD — Clinical intelligence orchestrator. Send a patient result to review and receive a complete structured clinical briefing.',
+    description: 'ContextMD - Clinical intelligence orchestrator. Send a patient result to review and receive a complete structured clinical briefing.',
     url: baseUrl,
     version: '1.0.0',
     protocolVersion: '0.3.0',
@@ -199,8 +192,6 @@ app.get('/.well-known/agent-card.json', (_req, res) => {
         description: 'Send a clinical briefing request for a patient result',
         inputModes: ['text/plain'],
         outputModes: ['text/plain'],
-        securitySchemes: apiKeyScheme,
-        security: [{ apiKey: [] }],
       }
     ],
     skills: [
@@ -213,22 +204,32 @@ app.get('/.well-known/agent-card.json', (_req, res) => {
         outputModes: ['text/plain'],
       }
     ],
-    securitySchemes: apiKeyScheme,
-    security: [{ apiKey: [] }],
   });
 });
 
-// API key check — optional (Prompt Opinion does not send one; wrong keys still rejected)
+// Simple IP-based rate limiter: 50 requests per minute per IP
+const rateLimitMap = new Map<string, { count: number, resetAt: number }>();
+const RATE_LIMIT = 50;
+const RATE_LIMIT_WINDOW_MS = 60000;
+
 app.use('/', (req, res, next) => {
   if (req.path === '/.well-known/agent-card.json') return next();
-  const key = req.headers['x-api-key'];
-  const valid = [
-    process.env.API_KEY_PRIMARY   ?? 'contextmd-key-001',
-    process.env.API_KEY_SECONDARY ?? 'contextmd-key-002',
-  ];
-  if (key && !valid.includes(String(key))) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+
+  if (!record || now > record.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return next();
   }
+
+  if (record.count >= RATE_LIMIT) {
+    console.warn(`Rate limit exceeded for IP: ${ip}`);
+    return res.status(429).json({ error: 'Too Many Requests - Rate limit exceeded' });
+  }
+
+  record.count++;
   return next();
 });
 
@@ -303,6 +304,7 @@ app.post('/', async (req, res) => {
 
   // ── Extract FHIR context from Prompt Opinion's extension metadata format ──
   // PO sends: metadata['http://localhost:5139/schemas/a2a/v1/fhir-context'] = { fhirUrl, fhirToken, patientId }
+
   const FHIR_EXT_KEY = process.env.FHIR_EXTENSION_URI ?? 'http://localhost:5139/schemas/a2a/v1/fhir-context';
   const fhirExt = incomingMetadata[FHIR_EXT_KEY] as Record<string, string> | undefined;
 

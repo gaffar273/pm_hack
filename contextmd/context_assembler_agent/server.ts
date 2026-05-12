@@ -12,12 +12,12 @@ const app = createA2aApp({
   agent: rootAgent,
   name: 'context_assembler_agent',
   description:
-    'ContextMD — Clinical data specialist. Fetches the complete patient FHIR record, ' +
+    'ContextMD - Clinical data specialist. Fetches the complete patient FHIR record, ' +
     'the specific new test result, and trend data for relevant labs. ' +
     'Returns a unified patient context object.',
   url: process.env.CONTEXT_ASSEMBLER_URL ?? `http://localhost:${PORT}`,
   fhirExtensionUri: process.env.FHIR_EXTENSION_URI,
-  requireApiKey: true,
+  requireApiKey: false,
 });
 
 app.listen(PORT, () => {

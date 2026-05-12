@@ -12,10 +12,10 @@ const app = createA2aApp({
   agent: rootAgent,
   name: 'literature_agent',
   description:
-    'ContextMD — Clinical research specialist. Searches PubMed for recent studies ' +
+    'ContextMD - Clinical research specialist. Searches PubMed for recent studies ' +
     'and ClinicalTrials.gov for open recruiting trials matching the patient profile.',
   url: process.env.LITERATURE_AGENT_URL ?? `http://localhost:${PORT}`,
-  requireApiKey: true,
+  requireApiKey: false,
 });
 
 app.listen(PORT, () => {

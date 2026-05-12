@@ -262,7 +262,7 @@ export function createA2aApp(options: CreateA2aAppOptions): Application {
             {
                 uri: fhirExtensionUri,
                 description:
-                    "FHIR R4 context — allows the agent to query the patient's FHIR server.",
+                    "FHIR R4 context - allows the agent to query the patient's FHIR server.",
                 required: false,
             },
         ]

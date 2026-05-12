@@ -12,10 +12,10 @@ const app = createA2aApp({
   agent: rootAgent,
   name: 'briefing_agent',
   description:
-    'ContextMD — MDT secretary. Assembles outputs from all specialist agents ' +
+    'ContextMD - MDT secretary. Assembles outputs from all specialist agents ' +
     'into one final structured ClinicalBriefing JSON object.',
   url: process.env.BRIEFING_AGENT_URL ?? `http://localhost:${PORT}`,
-  requireApiKey: true,
+  requireApiKey: false,
 });
 
 app.listen(PORT, () => {

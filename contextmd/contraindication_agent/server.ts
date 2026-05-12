@@ -12,11 +12,11 @@ const app = createA2aApp({
   agent: rootAgent,
   name: 'contraindication_agent',
   description:
-    'ContextMD — Clinical pharmacist. Safety-checks proposed medications via RxNorm API. ' +
+    'ContextMD - Clinical pharmacist. Safety-checks proposed medications via RxNorm API. ' +
     'Flags drug interactions, renal dose adjustments, and allergy conflicts. ' +
     'Marks each step as Safe / Dose Modified / Contraindicated.',
   url: process.env.CONTRAINDICATION_AGENT_URL ?? `http://localhost:${PORT}`,
-  requireApiKey: true,
+  requireApiKey: false,
 });
 
 app.listen(PORT, () => {
