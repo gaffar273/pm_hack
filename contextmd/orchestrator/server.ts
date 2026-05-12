@@ -68,7 +68,7 @@ function extractIdsFromText(text: string): { patient_id?: string; result_id?: st
   );
   return {
     patient_id: uuidMatch?.[1] ?? shortMatch?.[1],
-    result_id:  resultMatch?.[1],
+    result_id: resultMatch?.[1],
   };
 }
 
@@ -117,7 +117,7 @@ async function callAgent(
       'X-API-Key': apiKey,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(90_000),
   });
 
   if (!resp.ok) {
@@ -157,16 +157,13 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '50mb' }));
 
-const API_KEY       = process.env.API_KEY_PRIMARY           ?? 'contextmd-key-001';
-const ASSEMBLER_URL = process.env.CONTEXT_ASSEMBLER_URL     ?? 'http://localhost:8004';
-const REASONING_URL = process.env.REASONING_AGENT_URL       ?? 'http://localhost:8005';
-const CONTRA_URL    = process.env.CONTRAINDICATION_AGENT_URL ?? 'http://localhost:8006';
-const LITERATURE_URL = process.env.LITERATURE_AGENT_URL     ?? 'http://localhost:8007';
-const BRIEFING_URL  = process.env.BRIEFING_AGENT_URL        ?? 'http://localhost:8008';
+const API_KEY = process.env.API_KEY_PRIMARY ?? 'contextmd-key-001';
+const ASSEMBLER_URL = process.env.CONTEXT_ASSEMBLER_URL ?? 'http://localhost:8004';
+const REASONING_URL = process.env.REASONING_AGENT_URL ?? 'http://localhost:8005';
+const CONTRA_URL = process.env.CONTRAINDICATION_AGENT_URL ?? 'http://localhost:8006';
+const LITERATURE_URL = process.env.LITERATURE_AGENT_URL ?? 'http://localhost:8007';
+const BRIEFING_URL = process.env.BRIEFING_AGENT_URL ?? 'http://localhost:8008';
 
-const DEMO_PATIENT_ID = process.env.DEMO_PATIENT_ID ?? '132016691';
-const DEMO_RESULT_ID  = process.env.DEMO_RESULT_ID  ?? '132016730';
-const DEMO_FHIR_URL   = process.env.FHIR_BASE_URL   ?? 'https://hapi.fhir.org/baseR4';
 
 // Agent card endpoint
 app.get('/.well-known/agent-card.json', (_req, res) => {
@@ -226,7 +223,7 @@ const RATE_LIMIT_WINDOW_MS = 60000;
 
 app.use('/', (req, res, next) => {
   if (req.path === '/.well-known/agent-card.json') return next();
-  
+
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
   const record = rateLimitMap.get(ip);
@@ -282,24 +279,24 @@ app.post('/', async (req, res) => {
   // ── Fast-path: greetings / capability checks — respond immediately ──────────
   // Don't burn 5 Gemini API calls for "are you there?" type messages.
   const lc = userText.toLowerCase().trim();
+  // Match greetings including repeated chars: hi, hii, hiii, hey, heyy, hello
   const isGreeting = lc.length < 120 && (
-    /\b(hi|hello|hey|available|are you|ping|test|who are you|what (are|can) you|external agent|ready|online)\b/.test(lc)
+    /^(hi+|hey+|hello+|howdy|yo+)$/.test(lc)
+    || /\b(available|are you|ping|test|who are you|what (are|can) you|external agent|ready|online)\b/.test(lc)
   );
   if (isGreeting) {
     console.info('[orchestrator] Fast-path: capability/greeting detected — skipping pipeline');
     return res.json({
       jsonrpc: '2.0', id,
       result: {
-        message: {
-          kind: 'message',
-          messageId: uuidv4(),
-          role: 'agent',
-          contextId,
-          parts: [{
-            kind: 'text',
-            text: 'Yes - I\'m **ContextMD**, an AI-powered clinical intelligence orchestrator.\n\nI generate structured MDT briefings by orchestrating 5 specialist agents:\n- 🔬 Context Assembler (FHIR patient data)\n- 🧠 Clinical Reasoning\n- 💊 Drug Safety / Contraindications\n- 📚 Literature & Clinical Trials\n- 📋 Briefing Assembly\n\nSend me a patient result or clinical query to get started.',
-          }],
-        }
+        kind: 'message',
+        messageId: uuidv4(),
+        role: 'agent',
+        contextId,
+        parts: [{
+          kind: 'text',
+          text: 'Yes - I\'m **ContextMD**, an AI-powered clinical intelligence orchestrator.\n\nI generate structured MDT briefings by orchestrating 5 specialist agents:\n- 🔬 Context Assembler (FHIR patient data)\n- 🧠 Clinical Reasoning\n- 💊 Drug Safety / Contraindications\n- 📚 Literature & Clinical Trials\n- 📋 Briefing Assembly\n\nSend me a patient result or clinical query to get started.',
+        }],
       },
     });
   }
@@ -323,28 +320,41 @@ app.post('/', async (req, res) => {
   const fhirExt = incomingMetadata[FHIR_EXT_KEY] as Record<string, string> | undefined;
 
   const sharp: SharpContext = {
-    // UUID from message text has highest priority (PO includes it in "ID: uuid" format)
-    // metadata['patient_id'] is unreliable — PO sends the patient NAME there, not the FHIR UUID
-    patient_id:    parsedFromText.patient_id ?? fhirExt?.['patientId'] ?? (incomingMetadata['patient_id'] as string) ?? sharpFromHeader.patient_id ?? cachedSession?.sharp.patient_id ?? DEMO_PATIENT_ID,
-    fhir_base_url: (incomingMetadata['fhir_base_url'] as string) ?? fhirExt?.['fhirUrl'] ?? sharpFromHeader.fhir_base_url ?? cachedSession?.sharp.fhir_base_url ?? DEMO_FHIR_URL,
-    access_token:  (incomingMetadata['access_token'] as string) ?? fhirExt?.['fhirToken'] ?? sharpFromHeader.access_token  ?? cachedSession?.sharp.access_token,
-    encounter_id:  (incomingMetadata['encounter_id'] as string) ?? sharpFromHeader.encounter_id  ?? cachedSession?.sharp.encounter_id,
-    result_id:     (incomingMetadata['result_id']    as string) ?? sharpFromHeader.result_id     ?? parsedFromText.result_id ?? cachedSession?.sharp.result_id ?? DEMO_RESULT_ID,
+    patient_id: parsedFromText.patient_id ?? fhirExt?.['patientId'] ?? (incomingMetadata['patient_id'] as string) ?? sharpFromHeader.patient_id ?? cachedSession?.sharp.patient_id,
+    fhir_base_url: (incomingMetadata['fhir_base_url'] as string) ?? fhirExt?.['fhirUrl'] ?? sharpFromHeader.fhir_base_url ?? cachedSession?.sharp.fhir_base_url ?? process.env.FHIR_BASE_URL,
+    access_token: (incomingMetadata['access_token'] as string) ?? fhirExt?.['fhirToken'] ?? sharpFromHeader.access_token ?? cachedSession?.sharp.access_token,
+    encounter_id: (incomingMetadata['encounter_id'] as string) ?? sharpFromHeader.encounter_id ?? cachedSession?.sharp.encounter_id,
+    result_id: (incomingMetadata['result_id'] as string) ?? sharpFromHeader.result_id ?? parsedFromText.result_id ?? cachedSession?.sharp.result_id,
   };
+
+  // If no patient context at all, ask the user to select a patient first
+  if (!sharp.patient_id && !sharp.fhir_base_url) {
+    console.info('[orchestrator] No patient context received — returning guidance message');
+    return res.json({
+      jsonrpc: '2.0', id,
+      result: {
+        kind: 'message',
+        messageId: uuidv4(),
+        role: 'agent',
+        contextId,
+        parts: [{ kind: 'text', text: 'Please select a patient from the **Data Scope** panel (top of screen) and try again. ContextMD needs a patient FHIR context to generate a clinical briefing.' }],
+      },
+    });
+  }
 
   const FHIR_EXT_OUT_KEY = process.env.FHIR_EXTENSION_URI ?? 'https://app.promptopinion.ai/schemas/a2a/v1/fhir-context';
   // Pass FHIR credentials in the nested extension URI format that appFactory.ts stateDelta extraction expects.
   // appFactory scans metadata for keys containing 'fhir-context' and reads fhirUrl/fhirToken/patientId.
   const agentMetadata: Record<string, unknown> = {
     // Flat keys (backwards compat + direct SHARP reads)
-    patient_id:    sharp.patient_id,
+    patient_id: sharp.patient_id,
     fhir_base_url: sharp.fhir_base_url,
-    result_id:     sharp.result_id,
+    result_id: sharp.result_id,
     ...(sharp.access_token ? { access_token: sharp.access_token } : {}),
     ...(sharp.encounter_id ? { encounter_id: sharp.encounter_id } : {}),
     // Nested FHIR extension format — required by appFactory.ts / fhirHook.ts
     [FHIR_EXT_OUT_KEY]: {
-      fhirUrl:   sharp.fhir_base_url,
+      fhirUrl: sharp.fhir_base_url,
       fhirToken: sharp.access_token ?? '',
       patientId: sharp.patient_id,
     },
@@ -394,13 +404,11 @@ app.post('/', async (req, res) => {
         jsonrpc: '2.0',
         id,
         result: {
-          message: {
-            kind: 'message',
-            messageId: uuidv4(),
-            role: 'agent',
-            contextId,
-            parts: [{ kind: 'text', text: safetyData }],
-          }
+          kind: 'message',
+          messageId: uuidv4(),
+          role: 'agent',
+          contextId,
+          parts: [{ kind: 'text', text: safetyData }],
         },
       });
     }
@@ -485,10 +493,10 @@ app.post('/', async (req, res) => {
       ),
     ]);
 
-    const safetyData     = safetyResult.status     === 'fulfilled' ? safetyResult.value     : `Safety check failed: ${String((safetyResult as PromiseRejectedResult).reason)}`;
-    const literatureData = literatureResult.status  === 'fulfilled' ? literatureResult.value  : `Literature search failed: ${String((literatureResult as PromiseRejectedResult).reason)}`;
+    const safetyData = safetyResult.status === 'fulfilled' ? safetyResult.value : `Safety check failed: ${String((safetyResult as PromiseRejectedResult).reason)}`;
+    const literatureData = literatureResult.status === 'fulfilled' ? literatureResult.value : `Literature search failed: ${String((literatureResult as PromiseRejectedResult).reason)}`;
 
-    if (safetyResult.status     === 'rejected') console.error(`[orchestrator] Step 3 error: ${String((safetyResult as PromiseRejectedResult).reason)}`);
+    if (safetyResult.status === 'rejected') console.error(`[orchestrator] Step 3 error: ${String((safetyResult as PromiseRejectedResult).reason)}`);
     if (literatureResult.status === 'rejected') console.error(`[orchestrator] Step 4 error: ${String((literatureResult as PromiseRejectedResult).reason)}`);
     console.info(`[orchestrator] Steps 3+4 done ${elapsed()}`);
 
@@ -527,19 +535,17 @@ Return the complete ClinicalBriefing JSON object and nothing else.`,
     }
 
     const totalMs = Date.now() - pipelineStart;
-    console.info(`\n[orchestrator] ✅ Pipeline complete in ${(totalMs/1000).toFixed(1)}s — returning briefing (${briefingData.length} chars) | session cached: ${sessionCache.has(contextId)}`);
+    console.info(`\n[orchestrator] ✅ Pipeline complete in ${(totalMs / 1000).toFixed(1)}s — returning briefing (${briefingData.length} chars) | session cached: ${sessionCache.has(contextId)}`);
 
     return res.json({
       jsonrpc: '2.0',
       id,
       result: {
-        message: {
-          kind: 'message',
-          messageId: uuidv4(),
-          role: 'agent',
-          contextId,
-          parts: [{ kind: 'text', text: briefingData || '(pipeline completed but no briefing generated)' }],
-        }
+        kind: 'message',
+        messageId: uuidv4(),
+        role: 'agent',
+        contextId,
+        parts: [{ kind: 'text', text: briefingData || '(pipeline completed but no briefing generated)' }],
       },
     });
   } catch (err) {
@@ -556,13 +562,13 @@ app.listen(PORT, () => {
   console.info(` contextmd_orchestrator running on http://localhost:${PORT}`);
   console.info(`   Agent card: http://localhost:${PORT}/.well-known/agent-card.json`);
   console.info(`   Mode: Dynamic A2A | Multi-turn sessions | SHARP context propagation`);
-  console.info(`   Demo fallbacks: Patient=${DEMO_PATIENT_ID} | Result=${DEMO_RESULT_ID}`);
+  console.info(`   Mode: No demo fallbacks — real patient context required via PO FHIR`);
 
   // ── Vertex AI warmup — fire a trivial prompt 5s after boot so the first
   // real request doesn't pay the cold-start penalty (saves 5-10 seconds).
   setTimeout(async () => {
     try {
-      console.info('[orchestrator] 🔥 Vertex AI warmup ping...');
+      console.info('[orchestrator]  Vertex AI warmup ping...');
       await fetch(`${REASONING_URL}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
@@ -572,9 +578,9 @@ app.listen(PORT, () => {
         }),
         signal: AbortSignal.timeout(30_000),
       });
-      console.info('[orchestrator] ✅ Vertex AI warmup complete.');
+      console.info('[orchestrator]  Vertex AI warmup complete.');
     } catch {
-      console.info('[orchestrator] ⚠️  Warmup ping failed (non-fatal) — Vertex AI may have cold start on first request.');
+      console.info('[orchestrator]   Warmup ping failed (non-fatal) — Vertex AI may have cold start on first request.');
     }
   }, 5_000);
 });
