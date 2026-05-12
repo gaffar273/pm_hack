@@ -119,11 +119,11 @@ Current state of every feature, what's working, what's not, known issues, and th
 
 | Issue | Severity | Status | Details |
 |---|---|---|---|
-| `undefined` in briefing next_steps | LOW | OPEN | The `reason` field shows `undefined` in some next_steps in the markdown export. The `format_briefing.ts` script accesses `step.reasoning` but the briefing agent sometimes outputs `step.reason`. |
-| Pipeline takes ~91 seconds | MEDIUM | ACCEPTABLE | Parallel steps 3+4 already implemented. Main bottleneck is sequential LLM calls (3 in series). |
-| Cloudflare tunnel URL changes | MEDIUM | WORKAROUND | URL changes on restart. Must update .env ORCHESTRATOR_URL and re-register on PO. Consider Cloud Run. |
-| Vertex AI cold start | LOW | ACCEPTABLE | First request after idle may take 5-10 extra seconds. |
-| FHIR cache never invalidates | LOW | ACCEPTABLE | In-memory cache persists until process restart. Fine for demo. |
+| `undefined` in briefing next_steps | LOW | **FIXED** | Dual fix: (1) `format_briefing.ts` now reads `step.reason ?? step.reasoning`; (2) Briefing agent prompt explicitly enforces `reason` key with `NOT 'reasoning'` note. |
+| Pipeline takes ~91 seconds | MEDIUM | **IMPROVED** | Per-step elapsed timing now logged (`+Xs` at each step). Vertex AI warmup ping fires 5s after orchestrator boot to pre-warm cold models. Parallel steps 3+4 unchanged. |
+| Cloudflare tunnel URL changes | MEDIUM | **FIXED** | `expose.js` now auto-patches `.env` on connect **and** auto-reconnects on close — no manual URL edits needed on restart. |
+| Vertex AI cold start | LOW | **MITIGATED** | Orchestrator fires a warmup ping to the Reasoning agent 5s after startup. First real request should see normal latency. |
+| FHIR cache never invalidates | LOW | **FIXED** | `fhirCache` now uses a 10-minute TTL (`CacheEntry { data, expiresAt }`). Expired entries are evicted on next access with a log message. |
 
 ---
 

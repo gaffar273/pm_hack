@@ -44,7 +44,25 @@ function getFhirCredentials(ToolContext: ToolContext): FhirCredentials | null {
     return { fhirUrl: fhirUrl.replace(/\/$/, ''), fhirToken, patientId };
 }
 
-const fhirCache = new Map<string, any>();
+const FHIR_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes — balances freshness vs. speed for demo
+
+interface CacheEntry { data: Record<string, unknown>; expiresAt: number }
+const fhirCache = new Map<string, CacheEntry>();
+
+function fhirCacheGet(key: string): Record<string, unknown> | undefined {
+    const entry = fhirCache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+        fhirCache.delete(key);
+        console.info(`[fhir-cache] Expired entry evicted: ${key.slice(-80)}`);
+        return undefined;
+    }
+    return entry.data;
+}
+
+function fhirCacheSet(key: string, data: Record<string, unknown>): void {
+    fhirCache.set(key, { data, expiresAt: Date.now() + FHIR_CACHE_TTL_MS });
+}
 
 async function fhirGet(
     creds: FhirCredentials,
@@ -58,9 +76,10 @@ async function fhirGet(
     }
     
     const urlStr = url.toString();
-    if (fhirCache.has(urlStr)) {
-        console.info(`[cache hit] ${urlStr}`);
-        return fhirCache.get(urlStr);
+    const cached = fhirCacheGet(urlStr);
+    if (cached) {
+        console.info(`[fhir-cache] hit: ${urlStr.slice(-80)}`);
+        return cached;
     }
 
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -92,7 +111,7 @@ async function fhirGet(
                 throw new Error(`HTTP ${response.status} from ${url.toString()}: ${body.slice(0, 200)}`);
             }
             const data = await response.json() as Record<string, unknown>;
-            fhirCache.set(urlStr, data);
+            fhirCacheSet(urlStr, data);
             return data;
         } catch (err) {
             clearTimeout(timer);

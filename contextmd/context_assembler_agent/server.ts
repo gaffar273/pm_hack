@@ -6,7 +6,7 @@
 import { createA2aApp } from '../shared/appFactory.js';
 import { rootAgent } from './agent.js';
 
-const PORT = 8004;
+const PORT = Number(process.env.PORT) || 8004;
 
 const app = createA2aApp({
   agent: rootAgent,
@@ -21,6 +21,6 @@ const app = createA2aApp({
 });
 
 app.listen(PORT, () => {
-  console.info(`✅ context_assembler_agent running on http://localhost:${PORT}`);
-  console.info(`   Agent card: http://localhost:${PORT}/.well-known/agent-card.json`);
+  console.info(`✅ context_assembler_agent running on port ${PORT}`);
+  console.info(`   Agent card: /.well-known/agent-card.json`);
 });

@@ -16,7 +16,7 @@ import '../shared/env.js';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-const PORT = 8003;
+const PORT = Number(process.env.PORT) || 8003;
 
 // ── SHARP Context type ─────────────────────────────────────────────────────────
 
@@ -388,6 +388,8 @@ app.post('/', async (req, res) => {
     }
 
     // ── FULL MDT PIPELINE ──────────────────────────────────────────────────
+    const pipelineStart = Date.now();
+    const elapsed = () => `+${((Date.now() - pipelineStart) / 1000).toFixed(1)}s`;
 
     // ── Step 1: Context Assembler (or use cache) ───────────────────────────
     console.info(`\n[orchestrator] ── Step 1: Context Assembler ──`);
@@ -406,6 +408,7 @@ app.post('/', async (req, res) => {
           agentMetadata,
           contextId,
         );
+        console.info(`[orchestrator] Step 1 done ${elapsed()}`);
         // Cache the fetched context for this session
         sessionCache.set(contextId, { contextData, sharp, fetchedAt: Date.now() });
       } catch (e) {
@@ -432,6 +435,7 @@ app.post('/', async (req, res) => {
         agentMetadata,
         contextId,
       );
+      console.info(`[orchestrator] Step 2 done ${elapsed()}`);
     } catch (e) {
       console.error(`[orchestrator] Step 2 FATAL: ${String(e)}`);
       return res.json({
@@ -468,6 +472,7 @@ app.post('/', async (req, res) => {
 
     if (safetyResult.status     === 'rejected') console.error(`[orchestrator] Step 3 error: ${String((safetyResult as PromiseRejectedResult).reason)}`);
     if (literatureResult.status === 'rejected') console.error(`[orchestrator] Step 4 error: ${String((literatureResult as PromiseRejectedResult).reason)}`);
+    console.info(`[orchestrator] Steps 3+4 done ${elapsed()}`);
 
     // ── Step 5: Briefing Agent ─────────────────────────────────────────────
     console.info(`\n[orchestrator] ── Step 5: Briefing Agent ──`);
@@ -497,12 +502,14 @@ Return the complete ClinicalBriefing JSON object and nothing else.`,
         agentMetadata,
         contextId,
       );
+      console.info(`[orchestrator] Step 5 done ${elapsed()}`);
     } catch (e) {
       briefingData = `Briefing assembly failed: ${String(e)}`;
       console.error(`[orchestrator] Step 5 error: ${String(e)}`);
     }
 
-    console.info(`\n[orchestrator] Pipeline complete — returning briefing (${briefingData.length} chars) | session cached: ${sessionCache.has(contextId)}`);
+    const totalMs = Date.now() - pipelineStart;
+    console.info(`\n[orchestrator] ✅ Pipeline complete in ${(totalMs/1000).toFixed(1)}s — returning briefing (${briefingData.length} chars) | session cached: ${sessionCache.has(contextId)}`);
 
     return res.json({
       jsonrpc: '2.0',
@@ -530,4 +537,24 @@ app.listen(PORT, () => {
   console.info(`   Agent card: http://localhost:${PORT}/.well-known/agent-card.json`);
   console.info(`   Mode: Dynamic A2A | Multi-turn sessions | SHARP context propagation`);
   console.info(`   Demo fallbacks: Patient=${DEMO_PATIENT_ID} | Result=${DEMO_RESULT_ID}`);
+
+  // ── Vertex AI warmup — fire a trivial prompt 5s after boot so the first
+  // real request doesn't pay the cold-start penalty (saves 5-10 seconds).
+  setTimeout(async () => {
+    try {
+      console.info('[orchestrator] 🔥 Vertex AI warmup ping...');
+      await fetch(`${REASONING_URL}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 'warmup', method: 'message/send',
+          params: { message: { messageId: 'warmup', role: 'user', parts: [{ kind: 'text', text: 'ping' }] } },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      console.info('[orchestrator] ✅ Vertex AI warmup complete.');
+    } catch {
+      console.info('[orchestrator] ⚠️  Warmup ping failed (non-fatal) — Vertex AI may have cold start on first request.');
+    }
+  }, 5_000);
 });

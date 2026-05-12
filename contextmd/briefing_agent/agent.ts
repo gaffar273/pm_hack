@@ -54,7 +54,7 @@ Return ONLY this exact JSON structure (no markdown wrapping, no conversational t
     {
       "action": "...",
       "status": "Safe|Dose Modified",
-      "reason": "Required if Dose Modified",
+      "reason": "REQUIRED if status is Dose Modified, use the key 'reason' (NOT 'reasoning')",
       "alternative": null
     }
   ],
