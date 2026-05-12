@@ -117,7 +117,7 @@ async function callAgent(
       'X-API-Key': apiKey,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(300_000),
+    signal: AbortSignal.timeout(25_000),
   });
 
   if (!resp.ok) {
@@ -290,14 +290,16 @@ app.post('/', async (req, res) => {
     return res.json({
       jsonrpc: '2.0', id,
       result: {
-        kind: 'message',
-        messageId: uuidv4(),
-        role: 'agent',
-        contextId,
-        parts: [{
-          kind: 'text',
-          text: 'Yes — I\'m **ContextMD**, an AI-powered clinical intelligence orchestrator.\n\nI generate structured MDT briefings by orchestrating 5 specialist agents:\n- 🔬 Context Assembler (FHIR patient data)\n- 🧠 Clinical Reasoning\n- 💊 Drug Safety / Contraindications\n- 📚 Literature & Clinical Trials\n- 📋 Briefing Assembly\n\nSend me a patient result or clinical query to get started.',
-        }],
+        message: {
+          kind: 'message',
+          messageId: uuidv4(),
+          role: 'agent',
+          contextId,
+          parts: [{
+            kind: 'text',
+            text: 'Yes - I\'m **ContextMD**, an AI-powered clinical intelligence orchestrator.\n\nI generate structured MDT briefings by orchestrating 5 specialist agents:\n- 🔬 Context Assembler (FHIR patient data)\n- 🧠 Clinical Reasoning\n- 💊 Drug Safety / Contraindications\n- 📚 Literature & Clinical Trials\n- 📋 Briefing Assembly\n\nSend me a patient result or clinical query to get started.',
+          }],
+        }
       },
     });
   }
@@ -392,11 +394,13 @@ app.post('/', async (req, res) => {
         jsonrpc: '2.0',
         id,
         result: {
-          kind: 'message',
-          messageId: uuidv4(),
-          role: 'agent',
-          contextId,
-          parts: [{ kind: 'text', text: safetyData }],
+          message: {
+            kind: 'message',
+            messageId: uuidv4(),
+            role: 'agent',
+            contextId,
+            parts: [{ kind: 'text', text: safetyData }],
+          }
         },
       });
     }
@@ -529,11 +533,13 @@ Return the complete ClinicalBriefing JSON object and nothing else.`,
       jsonrpc: '2.0',
       id,
       result: {
-        kind: 'message',
-        messageId: uuidv4(),
-        role: 'agent',
-        contextId,
-        parts: [{ kind: 'text', text: briefingData || '(pipeline completed but no briefing generated)' }],
+        message: {
+          kind: 'message',
+          messageId: uuidv4(),
+          role: 'agent',
+          contextId,
+          parts: [{ kind: 'text', text: briefingData || '(pipeline completed but no briefing generated)' }],
+        }
       },
     });
   } catch (err) {
