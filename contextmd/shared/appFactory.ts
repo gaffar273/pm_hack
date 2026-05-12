@@ -318,6 +318,18 @@ export function createA2aApp(options: CreateA2aAppOptions): Application {
     // ── Build Express app ────────────────────────────────────────────────────────
 
     const app = express();
+
+    // Enable CORS
+    app.use((req, res, next) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+        next();
+    });
+
     app.use(express.json({ limit: '50mb' }));
 
     // 1. GET /.well-known/agent-card.json — ALWAYS public.
